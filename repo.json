@@ -1,0 +1,9 @@
+{
+  "name": "NSFW",
+  "iconUrl": "https://raw.githubusercontent.com/doGior/18plus-Extensions/master/repo_icon.png",
+  "description": "This repo contains NSFW sources",
+  "manifestVersion": 1,
+  "pluginLists": [
+    "https://raw.githubusercontent.com/doGior/18plus-Extensions/builds/plugins.json"
+  ]
+}
