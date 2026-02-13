@@ -8,6 +8,5 @@ import android.content.Context
 class EpornerPlugin: Plugin() {
     override fun load(context: Context) {
         registerMainAPI(Eporner())
-        registerMainAPI(Epornerstar())
     }
 }
