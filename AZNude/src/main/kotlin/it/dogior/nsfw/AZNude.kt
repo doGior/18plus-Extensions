@@ -164,7 +164,6 @@ class AZNude : MainAPI() {
                 this.plot = "$title +18"
                 this.tags = tags
                 this.recommendations = recommendations
-                addRating(score)
             }
         } else {
             val title = document.selectFirst("meta[name=title]")?.attr("content") ?: return null
