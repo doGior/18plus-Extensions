@@ -106,7 +106,7 @@ class FreePornVideos : MainAPI() {
 
         val year = full_title.substring(full_title.length - 4).toIntOrNull()
         val rating = document.selectFirst("div.rating span")?.text()?.substringBefore("%")?.trim()
-            ?.toFloatOrNull()?.div(10)?.toString()?.toRatingInt()
+            ?.toFloatOrNull()?.div(10)?.toString()?.toInt()
 
         val raw_duration =
             document.selectXpath("//span[contains(text(), 'Duration')]/em").text().trim()
