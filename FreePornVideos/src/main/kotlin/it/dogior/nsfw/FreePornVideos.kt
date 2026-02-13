@@ -135,7 +135,6 @@ class FreePornVideos : MainAPI() {
             this.plot = description
             this.tags = tags
             this.recommendations = recommendations
-            this.rating = rating
             this.duration = duration
             addActors(actors)
         }
