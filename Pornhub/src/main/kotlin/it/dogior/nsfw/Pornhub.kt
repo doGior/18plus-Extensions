@@ -30,9 +30,6 @@ open class Pornhub : MainAPI() {
         "$mainUrl/video?c=139&o=cm&t=w&hd=1&page=" to "Verified Models",
         "$mainUrl/video?c=138&o=cm&t=w&hd=1&page=" to "Verified Amateurs",
         "$mainUrl/video?c=482&o=cm&t=w&hd=1&page=" to "Verified Couples",
-
-        // I'll probably make another extensions just for the models
-//        "${mainUrl}/model/fantasybabe/videos?o=cm&t=w&hd=1&page=" to "FantasyBabe",
     )
     private val cookies = mapOf(Pair("hasVisited", "1"), Pair("accessAgeDisclaimerPH", "1"))
 
@@ -50,6 +47,7 @@ open class Pornhub : MainAPI() {
         val home = soup.select(selector).mapNotNull {
             val title = it.selectFirst("span.title a")?.text() ?: ""
             val link = fixUrlNull(it.selectFirst("a")?.attr("href")) ?: return@mapNotNull null
+            if (link.contains("/model/") || link.contains("/shorties/")) return@mapNotNull null
             val img = fetchImgUrl(it.selectFirst("img"))
             thumbnails[link] = img
             newMovieSearchResponse(
@@ -57,11 +55,11 @@ open class Pornhub : MainAPI() {
                 url = link,
                 type = globalTvType,
             ) {
-                this.posterUrl = img
+                addPoster(img, headers = mapOf("referer" to "https://www.pornhub.com/"))
             }
         }
         return if (home.isNotEmpty()) {
-             newHomePageResponse(
+            newHomePageResponse(
                 list = HomePageList(
                     name = categoryName, list = home, isHorizontalImages = true
                 ), hasNext = true
@@ -88,22 +86,40 @@ open class Pornhub : MainAPI() {
     }
 
     override suspend fun load(url: String): LoadResponse {
-        val soup = app.get(url, cookies = cookies).document
+        val response = app.get(url, cookies = cookies, referer = "https://www.pornhub.com/")
+        val realUrl = response.okhttpResponse.request.url.toString()
+        val soup = response.document
+
+        val poster: String? = soup.selectFirst(".videoElementPoster")
+            ?.attr("src") ?: thumbnails[url] ?: soup.selectFirst("div.video-wrapper .mainPlayerDiv img")?.attr("src")
+        ?: soup.selectFirst("head meta[property=og:image]")?.attr("content")
+
+        if (realUrl.contains("/shorties/")) {
+            val videoData = soup.selectFirst(".videoData")!!
+            val channel = videoData.selectFirst("h1.title")!!.text()
+            val title = videoData.selectFirst("h2.description")!!.text()
+            val tags = videoData.select("div.pillsWrapper > button").map { it.text() }
+            val actorImage = soup.selectFirst(".userAvatar > img")!!.attr("src")
+            return newMovieLoadResponse(title, url, TvType.NSFW, url) {
+                this.posterUrl = poster
+                this.plot = "Shorties might not work correctly"
+                this.tags = tags
+                addActors(listOf(Actor(channel, actorImage)))
+            }
+        }
         val title = soup.selectFirst(".title span")?.text() ?: ""
-        val poster: String? = thumbnails[url] ?: soup.selectFirst("div.video-wrapper .mainPlayerDiv img")?.attr("src")
-            ?: soup.selectFirst("head meta[property=og:image]")?.attr("content")
         val tags = soup.select("div.categoriesWrapper a")
             .map { it.text().trim().replace(", ", "") }
-
         val recommendations = soup.select("ul#relatedVideosListing li.pcVideoListItem").map {
             val rTitle = it.selectFirst("div.phimage a")?.attr("title") ?: ""
             val rUrl = fixUrl(it.selectFirst("div.phimage a")?.attr("href").toString())
             val rPoster = fixUrl(
                 it.selectFirst("div.phimage img.js-videoThumb")?.attr("src").toString()
             )
-            newMovieSearchResponse(name = rTitle, url = rUrl) { this.posterUrl = rPoster }
+            newMovieSearchResponse(name = rTitle, url = rUrl) {
+                addPoster(rPoster, headers = mapOf("referer" to "https://www.pornhub.com/"))
+            }
         }
-
         val channel =
             soup.select("div.video-wrapper div.video-info-row.userRow div.userInfoBlock")
                 .map {
@@ -124,15 +140,15 @@ open class Pornhub : MainAPI() {
             val rPoster = fixUrl(
                 it.selectFirst("div.phimage img.js-videoThumb")?.attr("src").toString()
             )
-            newMovieSearchResponse(name = rTitle, url = rUrl) { this.posterUrl = rPoster }
+            newMovieSearchResponse(name = rTitle, url = rUrl) {
+                addPoster(rPoster, headers = mapOf("referer" to "https://www.pornhub.com/"))
+            }
         }
 
         val a = Regex("""'(?<=video_date_published' : ')\d{8}""")
         val datePublished = a.find(soup.head().toString())?.value?.substringAfter("'")
-        val formattedDate = datePublished?.substring(0, 4) + "/" + datePublished?.substring(
-            4,
-            6
-        ) + "/" + datePublished?.substring(6, 8)
+        val formattedDate = datePublished?.substring(0, 4) + "/" + datePublished?.substring(4, 6) +
+                "/" + datePublished?.substring(6, 8)
 
         val script = soup.selectFirst("#player > script")?.data()
         val qualities =
@@ -141,7 +157,7 @@ open class Pornhub : MainAPI() {
                 (qualities?.let { "Qualities available: $qualities" } ?: "")
 
         return newMovieLoadResponse(title, url, TvType.NSFW, url) {
-            this.posterUrl = poster
+            addPoster(poster, headers = mapOf("referer" to "https://www.pornhub.com/"))
             this.plot = description
             this.tags = tags
             addActors(channel + pornstars)
