@@ -12,7 +12,7 @@ cloudstream {
      * 2: Slow
      * 3: Beta only
     **/
-    status  = 1 // will be 3 if unspecified
+    status  = 0
     tvTypes = listOf("NSFW")
     iconUrl = "https://spankbang.com/static/desktop/Images/icons/v3/apple-touch-icon.png"
 }
