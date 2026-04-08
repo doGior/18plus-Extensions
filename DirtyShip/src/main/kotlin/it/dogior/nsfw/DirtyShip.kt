@@ -16,33 +16,30 @@ class DirtyShip(private val plugin: DirtyShipPlugin) : MainAPI() {
     override val supportedTypes = setOf(TvType.NSFW)
 
     override val mainPage = mainPageOf(
-        "${mainUrl}/category/amateur-d/" to "Amateur",
+        "${mainUrl}/category/amateur-fg/" to "Amateur",
         "${mainUrl}/category/anime/" to "Anime",
-        "${mainUrl}/category/asian-d/" to "Asian",
-        "${mainUrl}/category/asmr-h/" to "ASMR",
-        "${mainUrl}/category/couple-b/" to "Couple",
-        "${mainUrl}/category/celebrity-ef/" to "Celebrity",
-        "${mainUrl}/category/fansly-f/" to "Fansly",
-        "${mainUrl}/category/loyalfans/" to "LoyalFans",
-        "${mainUrl}/category/onlyfans-i/" to "OnlyFans",
-        "${mainUrl}/category/patreon-de/" to "Patreon",
-        "${mainUrl}/category/snapchat-c/" to "Snapchat",
-        "${mainUrl}/category/teen-def/" to "Teen",
-        "${mainUrl}/category/tiktok-a/" to "TikTok",
-        "${mainUrl}/category/twitch-b/" to "Twitch",
-        "${mainUrl}/category/twitter/" to "Twitter",
-        "${mainUrl}/category/youtube-b/" to "YouTube",
+        "${mainUrl}/category/asian-fg/" to "Asian",
+        "${mainUrl}/category/asmr-jk/" to "ASMR",
+        "${mainUrl}/category/celebrity-fg/" to "Celebrity",
+        "${mainUrl}/category/couple-c/" to "Couple",
+        "${mainUrl}/category/fansly-i/" to "Fansly",
+        "${mainUrl}/category/onlyfans-k/" to "OnlyFans",
+        "${mainUrl}/category/patreon-fg/" to "Patreon",
+        "${mainUrl}/category/teen-fg/" to "Teen",
+        "${mainUrl}/category/twitch-c/" to "Twitch",
+        "${mainUrl}/category/twitter-a1/" to "Twitter",
+        "${mainUrl}/category/youtube-d/" to "YouTube",
     )
 
-    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
+    override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse? {
         val document = if (page == 1) {
             app.get(request.data).document
         } else {
             app.get("${request.data}page/$page/").document
         }
         val home = document.select("li.thumi").mapNotNull { it.toMainPageResult() }
-
-        return newHomePageResponse(request.name, home)
+        if (home.isEmpty()) return null
+        return newHomePageResponse(HomePageList(request.name, home, true))
     }
 
     private fun Element.toMainPageResult(): SearchResponse? {
