@@ -1,15 +1,16 @@
 package it.dogior.nsfw
 
+import com.fasterxml.jackson.annotation.JsonProperty
 import com.lagradost.api.Log
-import org.jsoup.nodes.Element
 import com.lagradost.cloudstream3.*
-import com.lagradost.cloudstream3.LoadResponse.Companion.addDuration
 import com.lagradost.cloudstream3.network.WebViewResolver
 import com.lagradost.cloudstream3.utils.*
+import com.lagradost.cloudstream3.utils.AppUtils.parseJson
+import com.lagradost.cloudstream3.utils.AppUtils.tryParseJson
 import org.json.JSONObject
 
 open class Eporner : MainAPI() {
-    override var mainUrl = "https://www.eporner.com"
+    override var mainUrl = "https://www.eporner.com/api/v2/video"
     override var name = "Eporner"
     override val hasMainPage = true
     override var lang = "en"
@@ -17,81 +18,73 @@ open class Eporner : MainAPI() {
     override val hasChromecastSupport = true
     override val supportedTypes = setOf(TvType.NSFW)
     override val vpnStatus = VPNStatus.MightBeNeeded
-    override var sequentialMainPage = true
-    override var sequentialMainPageDelay = 200L
-    override var sequentialMainPageScrollDelay = 200L
+//    override var sequentialMainPage = true
+//    override var sequentialMainPageDelay = 200L
+//    override var sequentialMainPageScrollDelay = 200L
 
 
     override val mainPage = mainPageOf(
-        "best-videos" to "Best Videos",
-        "top-rated" to "Top Rated",
-        "most-viewed" to "Most Viewed",
-        "cat/hd-1080p" to "1080 Porn",
-        "cat/4k-porn" to "4K Porn",
-        "cat/60fps" to "60FPS",
+        "search/?order=latest" to "Latest",
+        "search/?order=top-rated" to "Top Rated",
+        "search/?order=top-weekly" to "Most Viewed - Weekly",
+        "search/?order=top-monthly" to "Most Viewed - Top Monthly",
+        "search/?order=most-popular" to "Most Popular",
     )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
-        val document = app.get("$mainUrl/${request.data}/$page/").document
-        val home = document.select("div.mb.hdy").mapNotNull { it.toSearchResult() }
-
+        val response = app.get("$mainUrl/${request.data}&page=$page/").text
+        val results = parseJson<SearchResult>(response)
+        val section = results.videos.map { videoToSearchRsponse(it) }
+        val hasNext = page < results.totalPages
         return newHomePageResponse(
             list = HomePageList(
                 name = request.name,
-                list = home,
+                list = section,
                 isHorizontalImages = true
             ),
-            hasNext = true
+            hasNext = hasNext
         )
     }
 
-    private fun Element.toSearchResult(): SearchResponse {
-        val title = fixTitle(this.select("div.mbunder p a").text()).trim()
-        val href = fixUrl(this.select("div.mbcontent a").attr("href"))
-        val posterUrl = this.selectFirst("img")?.let {
-            fixUrl(it.attr("data-src")).takeIf { url -> url.isNotBlank() }
-                ?: fixUrl(it.attr("src"))
-        }
-        return newMovieSearchResponse(title, href, TvType.Movie) {
-            this.posterUrl = posterUrl
-        }
+    override suspend fun search(query: String, page: Int): SearchResponseList {
+        val response = app.get("$mainUrl/?query=$query&page=$page/").text
+        val results = parseJson<SearchResult>(response)
+        val section = results.videos.map { videoToSearchRsponse(it) }
+        val hasNext = page < results.totalPages
+        return newSearchResponseList(section, hasNext)
     }
 
-    override suspend fun search(query: String): List<SearchResponse> {
-        val searchResponse = mutableListOf<SearchResponse>()
+    override suspend fun load(url: String): LoadResponse? {
+        val videoId = if (url.contains("hd-porn/")) {
+            url.substringAfter("hd-porn/").substringBefore("/")
+        } else {
+            url.substringAfter("/video-").substringBefore("/")
+        }
+        val response =
+            app.get("https://www.eporner.com/api/v2/video/id/?id=$videoId&thumbsize=big").text
+        val video = tryParseJson<Video>(response)
+        if (video == null) return null
 
-        for (i in 1..10) {
-            val document = app.get("${mainUrl}/search/$query/$i").document
+        val title = video.title
+        val poster = video.defaultThumb.src
 
-            val results = document.select("div.mb.hdy").mapNotNull { it.toSearchResult() }
-
-            if (!searchResponse.containsAll(results)) {
-                searchResponse.addAll(results)
-            } else {
-                break
+        val durationParts = try {
+            video.lengthMin.split(":").reversed().map { it.toInt() }
+        } catch (_: NumberFormatException) {
+            null
+        }
+        val duration = if (durationParts == null) null else {
+            var dur = 0
+            for (i in 0..durationParts.size-1) {
+                dur = durationParts[i] * (i * 60)
             }
-
-            if (results.isEmpty()) break
+            dur / 60
         }
+        val description = "Added ${video.added}"
 
-        return searchResponse
-    }
+        val tags = video.keywords.split(",")
 
-    override suspend fun load(url: String): LoadResponse {
-        val document = app.get(url).document
-
-        val title =
-            document.selectFirst("meta[property=og:title]")?.attr("content")?.trim().toString()
-        val poster = fixUrlNull(document.selectFirst("[property='og:image']")?.attr("content"))
-        val videoDescription =
-            document.selectFirst("div.video-description")?.text()?.trim()
-        val pageDescription = document.select("meta[property=og:description]")
-            .attr("content").trim().removeSuffix(" Eporner is the largest hd porn source.")
-        val qualities = "Available in" + pageDescription.substringAfter("available in")
-        val duration = document.select("span.vid-length").text().trim()
-        val description = videoDescription?.let { "$it. $qualities" } ?: pageDescription
-
-        val relatedDiv = document.select("#relateddiv")
+        /*val relatedDiv = document.select("#relateddiv")
         val relatedVideos = relatedDiv.select(".mb").map {
             val a = it.select(".mbcontent > a")
             val img = a.select("img")
@@ -101,14 +94,15 @@ open class Eporner : MainAPI() {
             newMovieSearchResponse(relatedTitle, relatedLink) {
                 this.posterUrl = relatedPoster
             }
-        }
+        }*/
 
 
-        return newMovieLoadResponse(title, url, TvType.NSFW, url) {
+        return newMovieLoadResponse(title, url, TvType.NSFW, video.url) {
             this.posterUrl = poster
             this.plot = description
-            this.recommendations = relatedVideos
-            addDuration(duration)
+            this.tags = tags
+//            this.recommendations = relatedVideos
+            this.duration = duration
         }
     }
 
@@ -122,6 +116,8 @@ open class Eporner : MainAPI() {
             data, interceptor = WebViewResolver(Regex("""https://www\.eporner\.com/xhr/video"""))
         )
         val json = response.text
+        Log.d("BANANA", "$data\n$json")
+
 
         val jsonObject = JSONObject(json)
         val sources = jsonObject.getJSONObject("sources")
@@ -151,4 +147,67 @@ open class Eporner : MainAPI() {
         return Regex("(\\d{3,4})[pP]").find(str ?: "")?.groupValues?.getOrNull(1)?.toIntOrNull()
             ?: Qualities.Unknown.value
     }
+
+    private fun videoToSearchRsponse(video: Video): MovieSearchResponse {
+        return newMovieSearchResponse(name = video.title, url = video.url, TvType.NSFW) {
+            this.posterUrl = video.defaultThumb.src
+        }
+    }
+
+    data class SearchResult(
+        @JsonProperty("count")
+        val count: Int,
+        @JsonProperty("page")
+        val page: Int,
+        @JsonProperty("per_page")
+        val perPage: Int,
+        @JsonProperty("start")
+        val start: Int,
+        @JsonProperty("time_ms")
+        val timeMs: Int,
+        @JsonProperty("total_count")
+        val totalCount: Int,
+        @JsonProperty("total_pages")
+        val totalPages: Int,
+        @JsonProperty("videos")
+        val videos: List<Video>
+    )
+
+    data class Video(
+        @JsonProperty("added")
+        val added: String,
+        @JsonProperty("default_thumb")
+        val defaultThumb: Thumb,
+        @JsonProperty("embed")
+        val embed: String,
+        @JsonProperty("id")
+        val id: String,
+        @JsonProperty("keywords")
+        val keywords: String,
+        @JsonProperty("length_min")
+        val lengthMin: String,
+        @JsonProperty("length_sec")
+        val lengthSec: Int,
+        @JsonProperty("rate")
+        val rate: String,
+        @JsonProperty("thumbs")
+        val thumbs: List<Thumb>,
+        @JsonProperty("title")
+        val title: String,
+        @JsonProperty("url")
+        val url: String,
+        @JsonProperty("views")
+        val views: Int
+    )
+
+    data class Thumb(
+        @JsonProperty("height")
+        val height: Int,
+        @JsonProperty("size")
+        val size: String,
+        @JsonProperty("src")
+        val src: String,
+        @JsonProperty("width")
+        val width: Int
+    )
 }
