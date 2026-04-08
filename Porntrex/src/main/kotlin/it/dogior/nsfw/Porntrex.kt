@@ -1,12 +1,12 @@
 package it.dogior.nsfw
 
-import com.lagradost.api.Log
 import com.lagradost.cloudstream3.HomePageList
 import com.lagradost.cloudstream3.HomePageResponse
 import com.lagradost.cloudstream3.LoadResponse
 import com.lagradost.cloudstream3.MainAPI
 import com.lagradost.cloudstream3.MainPageRequest
 import com.lagradost.cloudstream3.SearchResponse
+import com.lagradost.cloudstream3.SearchResponseList
 import com.lagradost.cloudstream3.SubtitleFile
 import com.lagradost.cloudstream3.TvType
 import com.lagradost.cloudstream3.VPNStatus
@@ -17,6 +17,7 @@ import com.lagradost.cloudstream3.mainPageOf
 import com.lagradost.cloudstream3.newHomePageResponse
 import com.lagradost.cloudstream3.newMovieLoadResponse
 import com.lagradost.cloudstream3.newMovieSearchResponse
+import com.lagradost.cloudstream3.newSearchResponseList
 import com.lagradost.cloudstream3.utils.ExtractorLink
 import com.lagradost.cloudstream3.utils.INFER_TYPE
 import com.lagradost.cloudstream3.utils.getQualityFromName
@@ -86,25 +87,18 @@ class Porntrex : MainAPI() {
 
     }
 
-    override suspend fun search(query: String): List<SearchResponse> {
-        val searchResponse = mutableListOf<SearchResponse>()
-        for (i in 1..15) {
-            val url: String = if (i == 1) {
-                "$mainUrl/search/${query.replace(" ", "-")}/"
-            } else {
-                "$mainUrl/search/${query.replace(" ", "-")}/$i/"
-            }
-            val document =
-                app.get(url).document
-            val results =
-                document.select("div.video-list div.video-item")
-                    .mapNotNull {
-                        it.toSearchResult()
-                    }
-            searchResponse.addAll(results)
-            if (results.isEmpty()) break
-        }
-        return searchResponse
+    override suspend fun search(query: String, page: Int): SearchResponseList {
+        val url = "$mainUrl/search/${query.replace(" ", "-")}/$page/"
+        val document = app.get(url).document
+        val results =
+            document.select("div.video-list div.video-item")
+                .mapNotNull {
+                    it.toSearchResult()
+                }
+        val currentPage = document.select("li.page-current").text()
+        val lastPage = document.select("a.pagination").last()?.text() ?: currentPage
+        val hasNext = currentPage < lastPage
+        return newSearchResponseList(results, hasNext)
     }
 
     override suspend fun load(url: String): LoadResponse {
